@@ -1,29 +1,41 @@
 /*
  * main.cpp
- * Copyright (C) 2019 pulkomandy <pulkomandy@kitt>
+ * Copyright (C) 2019 pulkomandy <pulkomandy@pulkomandy.tk>
  *
  * Distributed under terms of the MIT license.
  */
 
+#include <Alert.h>
 #include <Application.h>
+#include <BufferIO.h>
+#include <DurationFormat.h>
 #include <File.h>
+#include <FileGameSound.h>
 #include <GroupView.h>
 #include <Polygon.h>
 #include <Screen.h>
+#include <String.h>
 #include <Window.h>
 
 #include <arpa/inet.h>
 #include <stdio.h>
 
+bool gBenchmark;
+
 class DemoView: public BGroupView
 {
 	public:
 		DemoView()
-			: fDataStream("scene1.bin", B_READ_ONLY)
+			: fDataStream(new BFile("scene1.bin", B_READ_ONLY))
 			, fFrame(0)
 		{
+			for (int i = 0; i < 16; i++)
+				fColor[i] = make_color(0, 0, 0, 255);
 			SetLowColor(make_color(0, 0, 0, 255));
-			SetFlags(Flags() | B_WILL_DRAW | B_PULSE_NEEDED | B_SUBPIXEL_PRECISE);
+			if (gBenchmark)
+				SetFlags(Flags() | B_WILL_DRAW);
+			else
+				SetFlags(Flags() | B_WILL_DRAW | B_PULSE_NEEDED);
 		}
 
 		uint8_t decode(uint8_t raw)
@@ -36,8 +48,10 @@ class DemoView: public BGroupView
 
 		void Draw(BRect r)
 		{
-			BRect b = Bounds();
-			SetScale(b.Height() / 200 + 1);
+			if (!gBenchmark) {
+				BRect b = Bounds();
+				SetScale(b.Height() / 200 + 1);
+			}
 
 			bool align = false;
 			uint8_t flags;
@@ -88,9 +102,10 @@ class DemoView: public BGroupView
 					} else if (bits == 0xFE) {
 						align = true;
 						break;
-					} else if (bits == 0xFD)
-						exit(0);
-					else {
+					} else if (bits == 0xFD) {
+						be_app->PostMessage(B_QUIT_REQUESTED);
+						break;
+					} else {
 						BPolygon p;
 						for (int i = 0; i < (bits & 0xF); i++) {
 							uint8_t index;
@@ -115,9 +130,10 @@ class DemoView: public BGroupView
 					} else if (bits == 0xFE) {
 						align = true;
 						break;
-					} else if (bits == 0xFD)
-						exit(0);
-					else {
+					} else if (bits == 0xFD) {
+						be_app->PostMessage(B_QUIT_REQUESTED);
+						break;
+					} else {
 						BPolygon p;
 						BPoint pts[bits & 0xF];
 						for (int i = 0; i < (bits & 0xF); i++) {
@@ -144,6 +160,9 @@ class DemoView: public BGroupView
 				position += 0x10000;
 				fDataStream.Seek(position, SEEK_SET);
 			}
+
+			if (gBenchmark)
+				Invalidate();
 		}
 
 		void Pulse()
@@ -157,33 +176,72 @@ class DemoView: public BGroupView
 
 	private:
 		// FIXME use a buffered data io for extra speed!
-		BFile fDataStream;
+		BBufferIO fDataStream;
 		rgb_color fColor[16];
 		int fFrame;
 };
 
-int main(void)
+int main(int argc, char** argv)
 {
 	BApplication app("application/x-vnd.Shinra.benicc");
 
 	BScreen screen;
 	BRect r = screen.Frame();
-	float wi = r.Width();
-	r.right = r.left + r.Height() * 256 / 200;
-	r.OffsetBy((wi - r.Width()) / 2, 0);
+
+	if (argc > 1) {
+		// Benchmark mode
+		gBenchmark = true;
+	} else {
+		BAlert* alert = new BAlert("Pick a choice",
+			"BeNICCC - By PulkoMandy/Shinra\n"
+			"Original polygonstream from STNICCC 2000 by Oxygene\n"
+			"Music by Laxity", "Demo", "Benchmark", "Die");
+		int32 button = alert->Go();
+
+		if (button == 2) exit(0);
+		if (button == 1) gBenchmark = true;
+	}
+
+	if (gBenchmark) {
+		r = BRect(10, 30, 10 + 256 - 2, 30 + 200 - 2);
+	} else {
+		float wi = r.Width();
+		r.right = r.left + r.Height() * 256 / 200;
+		r.OffsetBy((wi - r.Width()) / 2, 0);
+	}
 	BWindow* w = new BWindow(r,
-			// BRect(10, 30, 10 - 1 + (256 - 1) * 2, 30 - 1 + (200 - 1) * 2),
 		"BeNICCC", B_TITLED_WINDOW, 0, 0);
 
 	BGroupView* v = new DemoView();
 	w->SetLayout(new BGroupLayout(B_VERTICAL));
 	w->AddChild(v);
 	v->MakeFocus();
-	w->SetPulseRate(1000000 / 60);
+
+	if (!gBenchmark)
+		w->SetPulseRate(1000000 / 60);
 	w->SetFlags(B_CLOSE_ON_ESCAPE | B_QUIT_ON_WINDOW_CLOSE | B_NOT_RESIZABLE);
 
 	w->Show();
+
+	BFileGameSound s("DESERTD2.MOD", false);
+	if (!gBenchmark) {
+		if (s.StartPlaying() != B_OK) {
+			fprintf(stderr, "Error playing music\n");
+		}
+	}
+
+	bigtime_t start = system_time();
 	app.Run();
+	bigtime_t end = system_time();
+
+	if (gBenchmark) {
+		BString message;
+		message.SetToFormat("Benchmark completed in %f seconds", (end - start) / 1000000.0f);
+		BAlert* a = new BAlert("benchmark result", message.String(), "Wow!");
+		a->Go();
+	}
+
+	s.StopPlaying();
 
 	return 0;
 }
