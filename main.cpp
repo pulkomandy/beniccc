@@ -13,11 +13,13 @@
 #include <FileGameSound.h>
 #include <GroupView.h>
 #include <Polygon.h>
+#include <Resources.h>
 #include <Screen.h>
 #include <String.h>
 #include <Window.h>
 
 #include <arpa/inet.h>
+#include <libgen.h>
 #include <stdio.h>
 
 bool gBenchmark;
@@ -25,8 +27,8 @@ bool gBenchmark;
 class DemoView: public BGroupView
 {
 	public:
-		DemoView()
-			: fDataStream(new BFile("scene1.bin", B_READ_ONLY))
+		DemoView(BPositionIO* data)
+			: fDataStream(data)
 			, fFrame(0)
 		{
 			for (int i = 0; i < 16; i++)
@@ -212,7 +214,13 @@ int main(int argc, char** argv)
 	BWindow* w = new BWindow(r,
 		"BeNICCC", B_TITLED_WINDOW, 0, 0);
 
-	BGroupView* v = new DemoView();
+	BResources* res = BApplication::AppResources();
+	size_t polySize;
+	const void* poly = res->LoadResource('POLY', 1, &polySize);
+	BMemoryIO* polystream = new BMemoryIO(poly, polySize);
+
+	BGroupView* v = new DemoView(polystream);
+
 	w->SetLayout(new BGroupLayout(B_VERTICAL));
 	w->AddChild(v);
 	v->MakeFocus();
@@ -222,6 +230,14 @@ int main(int argc, char** argv)
 	w->SetFlags(B_CLOSE_ON_ESCAPE | B_QUIT_ON_WINDOW_CLOSE | B_NOT_RESIZABLE);
 
 	w->Show();
+
+#if 0
+	size_t musicSize;
+	const void* music = res->LoadResource('MODF', 2, &musicSize);
+	BMemoryIO* soundStream = new BMemoryIO(music, musicSize);
+#else
+	chdir(dirname(argv[0]));
+#endif
 
 	BFileGameSound s("DESERTD2.MOD", false);
 	if (!gBenchmark) {
