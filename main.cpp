@@ -211,15 +211,26 @@ int main(int argc, char** argv)
 		r.right = r.left + r.Height() * 256 / 200;
 		r.OffsetBy((wi - r.Width()) / 2, 0);
 	}
-	BWindow* w = new BWindow(r,
-		"BeNICCC", B_TITLED_WINDOW, 0, 0);
-
 	BResources* res = BApplication::AppResources();
+
+#if 1
+	size_t musicSize;
+	const void* music = res->LoadResource('MODF', 2, &musicSize);
+	BMemoryIO* soundStream = new BMemoryIO(music, musicSize);
+	BFileGameSound* s = new BFileGameSound(soundStream, false);
+#else
+	chdir(dirname(argv[0]));
+	BFileGameSound s("DESERTD2.MOD", false);
+#endif
+
 	size_t polySize;
 	const void* poly = res->LoadResource('POLY', 1, &polySize);
 	BMemoryIO* polystream = new BMemoryIO(poly, polySize);
 
 	BGroupView* v = new DemoView(polystream);
+
+	BWindow* w = new BWindow(r,
+		"BeNICCC", B_TITLED_WINDOW, 0, 0);
 
 	w->SetLayout(new BGroupLayout(B_VERTICAL));
 	w->AddChild(v);
@@ -231,17 +242,8 @@ int main(int argc, char** argv)
 
 	w->Show();
 
-#if 0
-	size_t musicSize;
-	const void* music = res->LoadResource('MODF', 2, &musicSize);
-	BMemoryIO* soundStream = new BMemoryIO(music, musicSize);
-#else
-	chdir(dirname(argv[0]));
-#endif
-
-	BFileGameSound s("DESERTD2.MOD", false);
 	if (!gBenchmark) {
-		if (s.StartPlaying() != B_OK) {
+		if (s->StartPlaying() != B_OK) {
 			fprintf(stderr, "Error playing music\n");
 		}
 	}
@@ -257,7 +259,8 @@ int main(int argc, char** argv)
 		a->Go();
 	}
 
-	s.StopPlaying();
+	s->StopPlaying();
+	delete s;
 
 	return 0;
 }
